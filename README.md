@@ -1,4 +1,4 @@
-# A Peronalized Script Generator
+# A Peronalized Script Generation Server
 ## Prerequisites:
 You should have Azure AI API Key configured in your system environment.
 
