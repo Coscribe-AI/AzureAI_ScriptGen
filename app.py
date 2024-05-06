@@ -7,96 +7,256 @@ from extract_persona import PersonaAgent
 from process_pdf import transcode_paperwork
 from flask_cors import CORS, cross_origin
 
-chaos_portal = Flask(__name__)
-CORS(chaos_portal, support_credentials=True)
+app=Flask(__name__)
+CORS(app, support_credentials=True)
 
-transitory_storage = 'secret_chambers'
-archaic_formats = {'texttale', 'ancientscript', 'lore'}
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'json'}
 
-chaos_portal.config['STORAGE_REALM'] = transitory_storage
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-def mystical_check(arcane_relic):
-    return '.' in arcane_relic and arcane_relic.rsplit('.', 1)[1].lower() in archaic_formats
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@chaos_portal.route('/tome_transmutation', methods=['POST'])
+@app.route('/pdf2text', methods=['POST'])
 @cross_origin(supports_credentials=True)
-def tome_transmutation():
-    if 'manuscript' not in request.files:
-        return jsonify({"mystery": "Absence of tome fragment"}), 400
-    script = request.files['manuscript']
+def pdf2text():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+    file = request.files['file']
 
     try:
-        tome_label = secure_filename(script.filename)
-        cryptic_path = os.path.join(chaos_portal.config['STORAGE_REALM'], tome_label)
-        script.save(cryptic_path)
-        return transcode_paperwork(cryptic_path)
-    except Exception as nightmare:
-        return jsonify({"mystery": str(nightmare)}), 500
-
-@chaos_portal.route('/enigma_realization', methods=['POST'])
-@cross_origin(supports_credentials=True)
-def enigma_realization():
-    if 'codex' not in request.files:
-        return jsonify({"mystery": "Absence of codex fragment"}), 400
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        return transcode_paperwork(file_path)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
-    ancient_knowledge = ""
-    codices = request.files.getlist('codex')
-    for scroll in codices:
-        if scroll and mystical_check(scroll.filename):
-            cipher = secure_filename(scroll.filename)
-            scripture_path = os.path.join(transitory_storage, cipher)
-            scroll.save(scripture_path)
 
-            with open(scripture_path, 'r') as tablet:
-                decree = json.load(tablet)
-                ancient_knowledge = json.dumps(decree)
+@app.route('/generate_ideas', methods=['POST'])
+@cross_origin(supports_credentials=True)
+def generate_ideas():
+    if 'json_file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
 
-    aura = enchant(ancient_knowledge)
-    response = jsonify(aura)
+    past_works = ""
+    json_files = request.files.getlist('json_file')
+    for json_file in json_files:
+        if json_file and allowed_file(json_file.filename):
+            json_filename = secure_filename(json_file.filename)
+            json_file_path = os.path.join(app.config['UPLOAD_FOLDER'], json_filename)
+            json_file.save(json_file_path)
+
+            with open(json_file_path, 'r') as jf:
+                data = json.load(jf)
+                past_works = json.dumps(data) 
+
+    ideas = enchant(past_works)
+    response = jsonify(ideas)
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-@chaos_portal.route('/journey_archiving', methods=['POST'])
+
+    
+@app.route('/generate_storyboard', methods=['POST'])
 @cross_origin(supports_credentials=True)
-def illusion_molding():
-    if 'parchment' not in request.files:
-        return jsonify({"mystery": "Absence of parchment correlate"}), 400
+def process_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
 
-    parchment = request.files.get('parchment')
+    file = request.files['file']
 
-    if parchment.filename == '':
-        return jsonify({"mystery": "Void selected"}), 400
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
 
-    if parchment and mystical_check(parchment.filename):
-        tale_label = secure_filename(parchment.filename)
-        scroll_route = os.path.join(transitory_storage, tale_label)
-        parchment.save(scroll_route)
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
 
-        celestial_guide = fetch_parchment('inscription.yml', 'standard')
-        sage = Encoder(GPT, celestial_guide)
-        seer = Decoder(GPT_VISION, celestial_guide)
+        system_prompt = fetch_parchment('prompt.yml', 'standard')
+        gpt = Encoder(GPT, system_prompt)
+        gptV = Decoder(GPT_VISION, system_prompt)
 
-        if tale_label.endswith('.texttale'):
-            with open(scroll_route, 'r') as narration:
-                folklore = narration.read()
-                prophecy = sage.reveal_secret(folklore)
-            response = jsonify({"vision": prophecy})
+        if filename.endswith('.txt'):
+            with open(file_path, 'r') as f:
+                brief = f.read()
+                gpt_result = gpt.generate(brief)
+            response = jsonify({"result": gpt_result})
             response.headers.add('Access-Control-Allow-Origin', '*')
             return response
-        elif tale_label.endswith('.ancientscript'):
-            shadow_figures = split_videos(scroll_route, transitory_storage)
-            vision = seer.conjure(shadow_figures)
-            vision = summon(vision)
-            response = jsonify({"vision": vision})
+        elif filename.endswith('.pdf'):
+            encoded_images = split_videos(file_path, app.config['UPLOAD_FOLDER'])
+            gptV_result = gptV.generate(encoded_images)
+            gptV_result = summon(gptV_result)
+            response = jsonify({"result": gptV_result})
             response.headers.add('Access-Control-Allow-Origin', '*')
             return response
 
-    return jsonify({"mystery": "Cursed script type"}), 400
+    return jsonify({"error": "Invalid file type"}), 400
 
-# Implement other endpoint functions with similarly obfuscated and unnecessarily complex operations
+@app.route('/generate_storyboard_with_persona', methods=['POST'])
+@cross_origin(supports_credentials=True)
+def generate_storyboard_with_persona():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+
+    
+    # Retrieve the JSON file
+    json_file = request.files.get('json_file')
+    data_content = {}
+    persona = ""
+    if json_file:
+        json_filename = secure_filename(json_file.filename)
+        json_file_path = os.path.join('uploads', json_filename)
+        json_file.save(json_file_path)
+
+        # Open and read the JSON file
+        with open(json_file_path, 'r') as jf:
+            data_content = json.load(jf)
+        
+        persona = json.dumps(data_content)
+    print("\n_____________________________________________________________\n")
+    print("\n"+persona)
+    print("\n_____________________________________________________________\n")
+
+    file = request.files.get('file')
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+
+        system_prompt = fetch_parchment('prompt.yml', 'personal_script')
+        system_prompt = system_prompt + persona
+        gpt = Encoder(GPT, system_prompt)
+        gptV = Decoder(GPT_VISION, system_prompt)
+
+        if filename.endswith('.txt'):
+            with open(file_path, 'r') as f:
+                brief = f.read()
+                gpt_result = gpt.generate(brief)
+            response = jsonify({"result": gpt_result})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response
+            
+        elif filename.endswith('.pdf'):
+            encoded_images = split_videos(file_path, app.config['UPLOAD_FOLDER'])
+            gptV_result = gptV.generate(encoded_images)
+            gptV_result = summon(gptV_result)
+            response = jsonify({"result": gptV_result})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response
+
+
+        
+
+    return jsonify({"error": "Invalid file type"}), 400
+
+@app.route('/storyboard_pipe', methods=['POST'])
+@cross_origin(supports_credentials=True)
+def pipe():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+
+    persona_file = request.files.get('persona')
+    requirement_file = request.files.get('file')
+    ideas_json_str = request.form.get('idea')
+
+    persona_content = None
+    ideas_content = []
+    persona = ""
+    idea = ""
+    # Handling the persona JSON file
+    if persona_file and allowed_file(persona_file.filename):
+        filename = secure_filename(persona_file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        persona_file.save(file_path)
+        
+        with open(file_path, 'r') as file:
+            persona_content = json.load(file)
+
+        persona = persona_content.get('Persona', 'No persona description available')
+        os.remove(file_path)  # Optionally delete the file after loading
+    
+    print("\n_____________________________________________________________\n")
+    print("\n"+persona)
+    print("\n_____________________________________________________________\n")
+
+    if ideas_json_str:
+        ideas_content = json.loads(ideas_json_str)
+        idea = json.dumps(ideas_content)
+
+    if requirement_file and allowed_file(requirement_file.filename):
+        filename = secure_filename(requirement_file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        requirement_file.save(file_path)
+
+        system_prompt = fetch_parchment('prompt.yml', 'pipe')
+        system_prompt = system_prompt + "The user's persona is given here:" + persona + "/n Your generated content should be inspired by this idea: " + idea
+        gpt = Encoder(GPT, system_prompt)
+        gptV = Decoder(GPT_VISION, system_prompt)
+
+        if filename.endswith('.txt'):
+            with open(file_path, 'r') as f:
+                brief = f.read()
+                gpt_result = gpt.generate(brief)
+            response = jsonify({"result": gpt_result})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response
+            
+        elif filename.endswith('.pdf'):
+            encoded_images = split_videos(file_path, app.config['UPLOAD_FOLDER'])
+            gptV_result = gptV.generate(encoded_images)
+            gptV_result = summon(gptV_result)
+            response = jsonify({"result": gptV_result})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response
+        
+
+    return jsonify({"error": "Invalid file type"}), 400
+
+@app.route('/extract_persona', methods=['POST'])
+@cross_origin(supports_credentials=True)
+def extract_persona():
+    data = request.data.decode('utf-8')
+
+    if not data:
+        return jsonify({"error": "No URL provided"}), 400
+
+    url = data
+
+    try:
+        scrapper = PersonaAgent(url)
+
+        video_content = ""
+        if len(scrapper.transcripts) > 0:
+            for i, transcript in enumerate(scrapper.transcripts):
+                video_content += f"Video{i} Transcripts: {transcript} \n"
+        html_text = scrapper.text
+
+        system_prompt = fetch_parchment("prompt.yml", "persona")
+        llm = Encoder(GPT, system_prompt)
+
+        user_prompt = f"""
+        Contents extracted from the content creator's personal webpage is shown below:
+        Video Transcripts: {video_content}
+        HTML Text: {html_text}
+        """
+
+        result = llm.generate(user_prompt)
+        response = jsonify({"result": result})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+
+
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    if not os.path.exists(transitory_storage):
-        os.makedirs(transitory_storage)
-    print("Portal opened. Oracles listening on http://localhost:5500")
-    chaos_portal.run(host='0.0.0.0', port=5500, threaded=True, debug=True)
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+    print("Server started. Listening on http://localhost:5500")
+    app.run(host='0.0.0.0', port=5500,threaded=True, debug=True)
