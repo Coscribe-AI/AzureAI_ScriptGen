@@ -1,5 +1,5 @@
 # A Peronalized Script Generator
-## Prerequesites:
+## Prerequisites:
 You should have Azure AI API Key configured in your system environment.
 
 Setup your environment with env.yml
